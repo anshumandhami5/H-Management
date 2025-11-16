@@ -1,44 +1,41 @@
 // src/hooks/useSocket.jsx
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { getAuth } from '../services/auth';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:5000';
 
-export default function useSocket(onEvent) {
-  // onEvent: (evName, payload) => {}
+export default function useSocket(onEvent, opts = {}) {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const raw = getAuth();
-    const token = raw?.token;
-    const user = raw?.user;
-
-    // connect with credentials (CORS must allow)
-    const url = API_BASE || window.location.origin;
-    const socket = io(url, {
+    // ensure we use same origin as backend and let socket.io handle path
+    const socket = io(API_BASE, {
+      path: '/socket.io',   // default, explicit for clarity
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
       withCredentials: true,
-      transports: ['websocket','polling'],
-      auth: { token } // optional; server not using token but you may adapt
+      // optional auth: { token: ... }
     });
 
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      // join rooms so server can emit targeted events
-      const userId = user?._id || user?.id || user?.sub;
-      socket.emit('join', { userId, role: user?.role, doctorId: user?.role === 'doctor' ? userId : undefined });
+      console.log('socket connected', socket.id);
     });
 
-    // common appointment events
-    socket.on('appointment.created', (payload) => onEvent && onEvent('created', payload));
-    socket.on('appointment.updated', (payload) => onEvent && onEvent('updated', payload));
-    socket.on('connect_error', (err) => console.warn('Socket connect error', err));
+    socket.on('connect_error', (err) => {
+      console.error('socket connect_error', err);
+    });
+
+    socket.onAny((ev, payload) => {
+      if (typeof onEvent === 'function') onEvent(ev, payload);
+    });
 
     return () => {
-      try { socket.disconnect(); } catch (e) {}
+      try { socket.disconnect(); } catch (e) { /* ignore */ }
+      socketRef.current = null;
     };
-  }, [onEvent]);
+  }, [API_BASE, onEvent]);
 
   return socketRef;
 }
