@@ -1,0 +1,128 @@
+# -----------------------------
+# GLOBAL GITIGNORE (Backend + Frontend)
+# -----------------------------
+
+########################################
+### Node / NPM / Yarn / PNPM / Bun
+########################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+.yarn/*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.bun
+
+########################################
+### Build outputs (backend & frontend)
+########################################
+dist/
+build/
+out/
+.esbuild/
+.vite/
+*.tsbuildinfo
+
+########################################
+### Environment files
+########################################
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+########################################
+### Logs / Database dumps / Coverage
+########################################
+logs/
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+coverage/
+.nyc_output/
+
+########################################
+### Caches
+########################################
+.cache/
+.temp/
+.tmp/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+storybook-static/
+.cache-loader
+.happypack
+
+########################################
+### IDE & Editor files
+########################################
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+.idea/
+*.iml
+
+########################################
+### OS files (Windows & macOS)
+########################################
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+########################################
+### Misc
+########################################
+*.swp
+*.swo
+*.orig
+*.lock
+*.bak
+*.tmp
+*.temp
+*.log.*
+*.local
+
+# Local certificates
+*.pem
+*.crt
+*.key
+
+# Uploaded files (if you store media later)
+uploads/
+public/uploads/
+
+########################################
+### FRONTEND SPECIFIC (Vite / React)
+########################################
+# Vite cache
+vite.svg
+vite.config.temp
+
+########################################
+### BACKEND SPECIFIC (Express / Mongo)
+########################################
+# Mongoose debug dumps
+dump.rdb
+mongodb-*.log
+
+# local secrets & seeds
+.env
+.env.*
+/backend/sengrid-test.js
+/backend/src/seed/*
