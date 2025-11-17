@@ -6,18 +6,23 @@ const User = require('../models/User');
 const DoctorAvailability = require('../models/DoctorAvailability');
 const Appointment = require('../models/Appointment');
 
-// email helpers (existing)
+// email helpers
 const { sendCredentialsEmail, sendAppointmentEmail } = require('../utils/email');
 
-// safe wrapper for sending appointment emails (logs on fallback)
-async function safeSendAppointmentEmail(to, subject, html) {
+// safe email sender
+async function safeSendAppointmentEmail(toEmail, subject, html) {
   try {
-    if (!to) return;
+    if (!toEmail) return;
     if (typeof sendAppointmentEmail === 'function') {
-      await sendAppointmentEmail(to, subject, html);
+      // sendAppointmentEmail expects an object in your utils — adapt accordingly
+      if (sendAppointmentEmail.length === 1) {
+        // assume sendAppointmentEmail({ toEmail, ... })
+        await sendAppointmentEmail({ toEmail, subject, html });
+      } else {
+        await sendAppointmentEmail(toEmail, subject, html);
+      }
     } else {
-      // fallback: reuse sendCredentialsEmail which in your utils logs/send
-      await sendCredentialsEmail(to, subject, html || '');
+      await sendCredentialsEmail(toEmail, '(appointment)', '(no body)');
     }
   } catch (err) {
     console.error('Failed to send appointment email:', err);
@@ -26,6 +31,7 @@ async function safeSendAppointmentEmail(to, subject, html) {
 
 // -------------------- DOCTORS --------------------
 // GET /api/doctors
+// protected so the client can call /api/doctors
 router.get('/doctors', authenticateJWT, async (req, res, next) => {
   try {
     const docs = await User.find({ role: 'doctor' }).select('_id name specialization email').lean();
@@ -40,11 +46,8 @@ router.get('/doctors/:id/slots', authenticateJWT, async (req, res, next) => {
     const doctorId = req.params.id;
     const avail = await DoctorAvailability.findOne({ doctorId }).lean();
     const slots = (avail && Array.isArray(avail.slots)) ? avail.slots : [];
-
     // sort ascending
     slots.sort((a,b) => new Date(a.startAt) - new Date(b.startAt));
-
-    // return full slots shape expected by frontend
     res.json({ slots });
   } catch (err) { next(err); }
 });
@@ -59,7 +62,7 @@ router.post('/doctors/:id/slots', authenticateJWT, requireRole('reception'), asy
 
     const startDate = new Date(startAt);
 
-    // ensure DoctorAvailability doc exists, create if not
+    // upsert DoctorAvailability doc for this doctor and push slot if not already present
     let avail = await DoctorAvailability.findOne({ doctorId });
 
     if (!avail) {
@@ -95,88 +98,93 @@ router.post('/doctors/:id/slots', authenticateJWT, requireRole('reception'), asy
 });
 
 // -------------------- APPOINTMENTS --------------------
-// POST /api/appointments   -> book appointment (patient or receptionist)
+// POST /api/appointments -> book appointment (patient or receptionist)
 router.post('/appointments', authenticateJWT, async (req, res, next) => {
   try {
-    const actor = req.user; // logged in user
-    const { doctorId, startAt, durationMin = 15, patientName, patientEmail, reason } = req.body;
+    const actor = req.user || {};
+    const userId = actor._id || actor.sub || null;
 
+    // Accept optional patientId in body (useful when receptionist books for a registered patient)
+    const explicitPatientId = req.body.patientId || undefined;
+
+    const { doctorId, startAt, durationMin = 15, patientName, patientEmail, reason } = req.body;
     if (!doctorId || !startAt) return res.status(400).json({ message: 'doctorId & startAt required' });
 
+    // Log who is booking & provided patient details (helps debugging)
+    console.log('[POST /api/appointments] booking request by user=', { _id: userId, email: actor.email, role: actor.role }, ' body=', {
+      doctorId, startAt, durationMin, patientName, patientEmail, explicitPatientId, reason
+    });
+
     const startDate = new Date(startAt);
+    const endDate = new Date(startDate.getTime() + Number(durationMin) * 60_000);
 
     // find availability doc & slot
     const avail = await DoctorAvailability.findOne({ doctorId });
     if (!avail) return res.status(400).json({ message: 'No availability for this doctor' });
 
-    // find the slot subdoc (match by exact timestamp)
-    const slot = avail.slots.find(s => new Date(s.startAt).getTime() === startDate.getTime());
-    if (!slot) return res.status(400).json({ message: 'Slot not available' });
+    // find the slot subdoc
+    const slotIndex = avail.slots.findIndex(s => new Date(s.startAt).getTime() === startDate.getTime());
+    if (slotIndex < 0) return res.status(400).json({ message: 'Slot not available' });
+
+    const slot = avail.slots[slotIndex];
     if (slot.status === 'booked') return res.status(409).json({ message: 'Slot already booked' });
     if (slot.status === 'cancelled') return res.status(400).json({ message: 'Slot is cancelled' });
 
-    // patient details: either provided by receptionist or taken from actor
-    const finalName = (patientName && patientName.trim()) || actor.name || 'Unknown';
-    const finalEmail = (patientEmail || actor.email);
-    if (!finalEmail) return res.status(400).json({ message: 'Patient email required' });
+    // determine patient details
+    const finalName = patientName || actor.name || '';
+    const finalEmail = patientEmail || actor.email || '';
 
-    // try to find a User by email (so we can attach patientId for notifications)
-    let patientUser = null;
-    try {
-      patientUser = await User.findOne({ email: finalEmail.toLowerCase().trim() }).select('_id').lean();
-    } catch (errFind) {
-      // ignore find errors, proceed with creating appointment with email only
-      console.warn('User lookup for patient failed:', errFind && errFind.message);
-      patientUser = null;
-    }
+    // require either patientEmail or a patientId (registered user)
+    const finalPatientId = explicitPatientId || userId || undefined;
+    if (!finalEmail && !finalPatientId) return res.status(400).json({ message: 'Patient email or patientId required' });
 
-    const patientId = patientUser ? patientUser._id : undefined;
-
-    // create the Appointment document
-    const appt = await Appointment.create({
-      patientId: patientId,
-      patientName: finalName,
-      patientEmail: finalEmail,
+    // create the Appointment document with consistent fields
+    const apptDoc = {
+      patientId: finalPatientId || undefined,
+      patientName: finalName || undefined,
+      patientEmail: finalEmail || undefined,
       doctorId,
       startAt: startDate,
+      endAt: endDate,
       durationMin,
-      // compute endAt from duration
-      endAt: new Date(startDate.getTime() + (Number(durationMin) || 15) * 60 * 1000),
       reason: reason || '',
-      createdBy: actor._id
-    });
+      createdBy: userId || undefined
+    };
+
+    const appt = await Appointment.create(apptDoc);
 
     // attach appointmentId and patient info to the slot and mark booked
-    const slotIndex = avail.slots.findIndex(s => new Date(s.startAt).getTime() === startDate.getTime());
-    if (slotIndex >= 0) {
-      avail.slots[slotIndex].status = 'booked';
-      avail.slots[slotIndex].appointmentId = appt._id;
-      avail.slots[slotIndex].patient = { name: finalName, email: finalEmail, patientId: patientId };
-      await avail.save();
-    } else {
-      // this is unlikely but log for debugging
-      console.warn('Slot was not found in availability after creating appointment', { doctorId, startAt });
-    }
+    avail.slots[slotIndex].status = 'booked';
+    avail.slots[slotIndex].appointmentId = appt._id;
+    avail.slots[slotIndex].patient = {
+      name: finalName || undefined,
+      email: finalEmail || undefined,
+      patientId: finalPatientId || undefined
+    };
+    await avail.save();
 
-    // emit socket events (notify doctor, reception, patient)
+    // emit socket events
     const io = req.app.get('io');
-    io?.to(`doctor:${doctorId}`).emit('appointment:created', { appointment: appt });
-    io?.to('reception').emit('appointment:created', { appointment: appt });
-    if (patientId) {
-      io?.to(`patient:${patientId}`).emit('appointment:created', { appointment: appt });
-    } else {
-      // if no patientId (no registered user), fallback to notify the creating user room (createdBy)
-      io?.to(`user:${actor._id}`).emit('appointment:created', { appointment: appt });
+    io?.to(`doctor:${doctorId}`).emit('appointment:created', { appointment: appt, doctorId });
+    io?.to('reception').emit('appointment:created', { appointment: appt, doctorId });
+
+    // emit to patient rooms if we have an explicit patientId (registered user), otherwise
+    // emit to actor if the actor is the patient
+    if (appt.patientId) {
+      io?.to(`patient:${String(appt.patientId)}`).emit('appointment:created', { appointment: appt });
+      io?.to(`user:${String(appt.patientId)}`).emit('appointment:created', { appointment: appt });
+    } else if (userId) {
+      io?.to(`patient:${String(userId)}`).emit('appointment:created', { appointment: appt });
+      io?.to(`user:${String(userId)}`).emit('appointment:created', { appointment: appt });
     }
 
-    // send email to patient (best-effort)
+    // send email to patient (best effort)
     safeSendAppointmentEmail(finalEmail, 'Appointment booked', `<p>Your appointment is booked for ${startDate.toISOString()}</p>`);
 
     res.status(201).json({ appointment: appt });
   } catch (err) {
     console.error('Book appointment failed:', err);
-    // handle duplicate indexes / race
-    if (err && err.code === 11000) return res.status(409).json({ message: 'Slot already booked (race)' });
+    if (err.code === 11000) return res.status(409).json({ message: 'Slot already booked (race)' });
     next(err);
   }
 });
@@ -188,13 +196,14 @@ router.post('/appointments/:id/cancel', authenticateJWT, async (req, res, next) 
     const appt = await Appointment.findById(apptId);
     if (!appt) return res.status(404).json({ message: 'Appointment not found' });
 
-    const user = req.user;
-    const allowed = user.role === 'reception' || user.role === 'admin' || String(user._id) === String(appt.createdBy) || user.role === 'doctor';
+    const user = req.user || {};
+    const userId = user._id || user.sub || null;
+    const allowed = user.role === 'reception' || user.role === 'admin' || String(userId) === String(appt.createdBy) || user.role === 'doctor';
     if (!allowed) return res.status(403).json({ message: 'Not allowed to cancel' });
 
     appt.status = 'Cancelled';
     appt.meta = appt.meta || {};
-    appt.meta.cancelledBy = user._id;
+    appt.meta.cancelledBy = userId || undefined;
     appt.meta.cancelledReason = req.body.reason || '';
     appt.cancelledAt = new Date();
     await appt.save();
@@ -215,10 +224,12 @@ router.post('/appointments/:id/cancel', authenticateJWT, async (req, res, next) 
     const io = req.app.get('io');
     io?.to(`doctor:${appt.doctorId}`).emit('appointment:cancelled', { appointment: appt });
     io?.to('reception').emit('appointment:cancelled', { appointment: appt });
-    if (appt.patientId) {
-      io?.to(`patient:${appt.patientId}`).emit('appointment:cancelled', { appointment: appt });
-    } else {
-      io?.to(`user:${appt.createdBy}`).emit('appointment:cancelled', { appointment: appt });
+
+    // prefer emitting to patientId (if present), otherwise fallback to createdBy
+    const targetPatientId = appt.patientId || appt.createdBy;
+    if (targetPatientId) {
+      io?.to(`patient:${String(targetPatientId)}`).emit('appointment:cancelled', { appointment: appt });
+      io?.to(`user:${String(targetPatientId)}`).emit('appointment:cancelled', { appointment: appt });
     }
 
     safeSendAppointmentEmail(appt.patientEmail, 'Appointment cancelled', `<p>Your appointment on ${appt.startAt.toISOString()} was cancelled.</p>`);
@@ -230,12 +241,29 @@ router.post('/appointments/:id/cancel', authenticateJWT, async (req, res, next) 
 // GET /api/appointments
 router.get('/appointments', authenticateJWT, async (req, res, next) => {
   try {
-    const user = req.user;
+    const user = req.user || {};
+    const userId = user._id || user.sub || null;
     const q = {};
-    if (user.role === 'doctor') q.doctorId = user._id;
-    if (user.role === 'patient') q.patientEmail = user.email;
+
+    // doctor sees their appointments
+    if (user.role === 'doctor') q.doctorId = userId;
+
+    // patient: match by patientId OR patientEmail (more robust)
+    if (user.role === 'patient') {
+      if (userId && user.email) {
+        q.$or = [{ patientId: userId }, { patientEmail: user.email }];
+      } else if (userId) {
+        q.patientId = userId;
+      } else if (user.email) {
+        q.patientEmail = user.email;
+      }
+    }
+
+    // receptionist/admin: optional filters
     if (req.query.doctorId) q.doctorId = req.query.doctorId;
     if (req.query.status) q.status = req.query.status;
+
+    console.log('[GET /api/appointments] req.user=', { _id: userId, email: user.email, role: user.role }, ' queryBuilt=', JSON.stringify(q));
     const list = await Appointment.find(q).sort({ startAt: 1 }).lean();
     res.json({ appointments: list });
   } catch (err) { next(err); }

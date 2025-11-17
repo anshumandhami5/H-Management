@@ -41,19 +41,26 @@ export default function AuthProvider({ children }) {
             if (payload && payload.exp && payload.exp * 1000 < Date.now()) {
               authService.clearAuth?.();
               setUser(null);
+              // notify socket that auth changed
+              window.dispatchEvent(new CustomEvent('auth:updated', { detail: null }));
             } else {
               setUser(raw.user || null);
+              // notify socket of current auth (on app init)
+              window.dispatchEvent(new CustomEvent('auth:updated', { detail: raw }));
             }
           } catch (err) {
             authService.clearAuth?.();
             setUser(null);
+            window.dispatchEvent(new CustomEvent('auth:updated', { detail: null }));
           }
         } else {
           setUser(raw?.user || null);
+          window.dispatchEvent(new CustomEvent('auth:updated', { detail: raw || null }));
         }
       } catch (e) {
         try { authService.clearAuth?.(); } catch {}
         setUser(null);
+        window.dispatchEvent(new CustomEvent('auth:updated', { detail: null }));
       } finally {
         setReady(true);
       }
@@ -66,6 +73,9 @@ export default function AuthProvider({ children }) {
     // res typically: { token, user, forcedPasswordChange }
     authService.saveAuth?.(res);
     setUser(res.user || null);
+
+    // notify socket / other hooks that auth changed
+    window.dispatchEvent(new CustomEvent('auth:updated', { detail: res }));
 
     // If the server signals the user must change password, redirect to change password page
     if (res.forcedPasswordChange) {
@@ -81,6 +91,8 @@ export default function AuthProvider({ children }) {
       authService.clearAuth?.();
     } catch (e) { /* ignore */ }
     setUser(null);
+    // notify socket / other hooks that auth changed -> null
+    window.dispatchEvent(new CustomEvent('auth:updated', { detail: null }));
     try { navigate("/login"); } catch (e) { /* ignore */ }
   }
 

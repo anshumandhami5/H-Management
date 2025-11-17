@@ -13,54 +13,64 @@ export default function PatientBooking() {
   const [loading, setLoading] = useState(false);
   const [myAppointments, setMyAppointments] = useState([]);
 
+  // reload when socket events indicate changes
+  useSocket((ev, payload) => {
+    if (!ev) return;
+    if (['slot:created', 'slot:updated', 'appointment:created', 'appointment:cancelled'].includes(ev)) {
+      // refresh current view
+      if (selectedDoc) loadSlots();
+      loadMyAppointments();
+    }
+  });
+
   useEffect(()=> { loadDoctors(); loadMyAppointments(); }, []);
 
   async function loadDoctors() {
     try {
-      const r = await request('/doctors');
+      const r = await request('/api/doctors');
       setDoctors(r.doctors || []);
       if (r.doctors && r.doctors.length && !selectedDoc) setSelectedDoc(r.doctors[0]._id);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); alert(e.message || 'Failed to load doctors'); }
   }
 
   async function loadSlots() {
     if (!selectedDoc) return;
     setLoading(true);
     try {
-      const q = `/doctors/${selectedDoc}/availability?from=${fromDate}&to=${toDate}`;
-      const r = await request(q);
-      setSlots(r.slots || []);
+      // NEW: use the slots endpoint that receptionist writes to
+      const r = await request(`/api/doctors/${selectedDoc}/slots`);
+      // r.slots is array of slots (subdocs). Filter only available ones for patient booking.
+      const available = (r.slots || []).filter(s => (s.status || '').toString().toLowerCase() === 'available');
+      setSlots(available);
     } catch (e) {
       console.error(e);
-    } finally { setLoading(false); }
+      alert(e.message || 'Failed to load slots');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadMyAppointments() {
     try {
-      const r = await request('/appointments');
+      const r = await request('/api/appointments');
       setMyAppointments(r.appointments || []);
     } catch (e) { console.error(e); }
   }
 
   async function handleBook(slot) {
     try {
-      const payload = { doctorId: selectedDoc, startAt: slot.startAt.toISOString(), durationMin: 15, reason: 'Consult' };
-      await request('/appointments', { method: 'POST', body: JSON.stringify(payload) });
-      alert('Booked — check email for confirmation');
-      loadSlots(); loadMyAppointments();
+      // slot.startAt might be string or Date
+      const startAt = (typeof slot.startAt === 'string') ? slot.startAt : slot.startAt.toISOString();
+      const payload = { doctorId: selectedDoc, startAt, durationMin: slot.durationMin || 15, reason: 'Consult' };
+      await request('/api/appointments', { method: 'POST', body: JSON.stringify(payload) });
+      alert('Booked — check your email for confirmation');
+      loadSlots();
+      loadMyAppointments();
     } catch (e) {
+      console.error('Booking failed', e);
       alert(e.message || 'Booking failed');
     }
   }
-
-  // realtime updates
-  useSocket((ev, payload) => {
-    if (ev === 'created' || ev === 'updated') {
-      // if appointment concerns me, refresh list
-      const meId = null; // we don't need id; request() uses token for patient listing
-      loadMyAppointments();
-    }
-  });
 
   return (
     <div className="space-y-6">
@@ -81,11 +91,11 @@ export default function PatientBooking() {
         {loading && <div>Loading...</div>}
         {!loading && slots.length === 0 && <div className="text-sm text-gray-500">No slots</div>}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {slots.map((s, idx) => (
-            <div key={idx} className="bg-white p-3 rounded shadow flex justify-between items-center">
+          {slots.map((s) => (
+            <div key={s._id || s.startAt} className="bg-white p-3 rounded shadow flex justify-between items-center">
               <div>
                 <div className="font-semibold">{new Date(s.startAt).toLocaleString()}</div>
-                <div className="text-sm text-gray-600">{new Date(s.endAt).toLocaleTimeString()}</div>
+                <div className="text-sm text-gray-600">{(s.durationMin || 15) + ' min'}</div>
               </div>
               <button onClick={()=>handleBook(s)} className="px-3 py-1 rounded bg-blue-600 text-white">Book</button>
             </div>
@@ -100,7 +110,7 @@ export default function PatientBooking() {
             <AppointmentCard key={a._id} appt={a} role="patient" onAction={async (act) => {
               if (act === 'cancel') {
                 try {
-                  await request(`/appointments/${a._id}/status`, { method: 'POST', body: JSON.stringify({ status:'Cancelled', cancelledReason: 'Cancelled by patient' }) });
+                  await request(`/appointments/${a._id}/cancel`, { method: 'POST' });
                   loadMyAppointments();
                 } catch (e) { alert(e.message || 'Error'); }
               }
