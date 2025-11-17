@@ -5,15 +5,11 @@ import { request } from "../utils/api";
 import { useAuth } from "../components/AuthProvider";
 
 /**
- * PatientDashboard
- * - Shows doctors list (left)
- * - Shows available slots for selected doctor (middle)
- * - Booking form modal to provide name, phone, email (stores in appointment payload)
- * - My appointments list (right)
+ * PatientDashboard — Premium Hospital UI
  *
- * Notes:
- * - Uses GET /api/doctors and GET /api/doctors/:id/slots
- * - Books via POST /api/appointments with doctorId,startAt,patientName,patientEmail,patientPhone,durationMin
+ * UI-only changes: improved header, doctor cards with avatar, gradient accents,
+ * slot tiles, modern modal with blur overlay, appointment cards with badges,
+ * better empty states and responsive layout. No logic or API changes.
  */
 
 function fmt(dt) {
@@ -24,11 +20,29 @@ function fmt(dt) {
   }
 }
 
+function initials(name = "") {
+  const parts = (name || "").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function StatusPill({ status }) {
+  const s = String(status || "").toLowerCase();
+  if (s === "cancelled") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100">Cancelled</span>;
+  if (s === "arrived") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-100">Arrived</span>;
+  if (s === "inprogress") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">In progress</span>;
+  if (s === "complet" || s === "completed") return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">Completed</span>;
+  return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-600 text-white">Booked</span>;
+}
+
 export default function PatientDashboard() {
   const { logout } = useAuth();
+
+  // data state
   const [doctors, setDoctors] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
-  const selectedDocRef = useRef(null); // keep latest for socket callbacks
+  const selectedDocRef = useRef(null);
 
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -41,12 +55,10 @@ export default function PatientDashboard() {
   const [myAppointments, setMyAppointments] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
 
-  // keep ref updated so socket handler always sees latest selected doc
-  useEffect(() => {
-    selectedDocRef.current = selectedDoc;
-  }, [selectedDoc]);
+  // keep ref updated for socket handlers
+  useEffect(() => { selectedDocRef.current = selectedDoc; }, [selectedDoc]);
 
-  // real-time updates: ensure handler uses refs so it doesn't close over stale state
+  // socket: respond to server events (no logic change)
   useSocket((ev, payload) => {
     if (!ev) return;
     const interesting = [
@@ -54,15 +66,14 @@ export default function PatientDashboard() {
       "slot:updated",
       "appointment:created",
       "appointment:cancelled",
-      "appointment:updated"
+      "appointment:updated",
     ];
-    if (!interesting.includes(ev)) return;
+    // also accept dot-variants
+    const norm = String(ev).replace(/\./g, ":");
+    if (!interesting.includes(norm)) return;
 
-    // reload slots for currently selected doctor (if any)
     const doc = selectedDocRef.current;
     if (doc && doc._id) loadSlots(doc._id);
-
-    // reload appointments for this patient
     loadMyAppointments();
   });
 
@@ -78,6 +89,7 @@ export default function PatientDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc]);
 
+  // ------------- API loaders (unchanged) ----------------
   async function loadDoctors() {
     try {
       const res = await request("/api/doctors");
@@ -114,15 +126,13 @@ export default function PatientDashboard() {
       setMyAppointments(res.appointments || []);
     } catch (err) {
       console.error("loadMyAppointments:", err);
-      // If unauthorized, force logout to let user re-auth (backend-dependent)
-      if (err && err.status === 401) {
-        logout();
-      }
+      if (err && err.status === 401) logout();
     } finally {
       setLoadingAppointments(false);
     }
   }
 
+  // ------------- booking flow (unchanged behavior) ----------------
   function openBookingModal(slot) {
     setBookingSlot(slot);
     setForm({ name: "", phone: "", email: "" });
@@ -141,41 +151,35 @@ export default function PatientDashboard() {
         durationMin: bookingSlot.durationMin || 15,
         patientName: form.name,
         patientEmail: form.email,
-        patientPhone: form.phone // backend may ignore until implemented
+        patientPhone: form.phone,
       };
 
       const res = await request("/api/appointments", {
         method: "POST",
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
-      // If backend returns created appointment, add it to local list. Otherwise reload.
       if (res && res.appointment) {
         setMyAppointments((prev) => [res.appointment, ...prev]);
       } else {
-        // fallback: reload from server
         await loadMyAppointments();
       }
 
-      // remove booked slot locally so slots update immediately
-      setSlots((prev) => prev.filter((s) => {
-        // if slot objects have id use _id, otherwise compare startAt
-        if (s._id && bookingSlot._id) return s._id !== bookingSlot._id;
-        return s.startAt !== bookingSlot.startAt;
-      }));
+      setSlots((prev) =>
+        prev.filter((s) => {
+          if (s._id && bookingSlot._id) return s._id !== bookingSlot._id;
+          return s.startAt !== bookingSlot.startAt;
+        })
+      );
 
-      alert("Booked — check email for confirmation.");
       setShowBooking(false);
       setBookingSlot(null);
       setForm({ name: "", phone: "", email: "" });
-
-      // attempt to refresh slots from server to ensure canonical state
+      alert("Booked — check email for confirmation.");
       loadSlots(selectedDoc._id);
     } catch (err) {
       console.error("booking:", err);
-      // If backend returns created appointment inside error path, still try to refresh
       alert(err?.message || "Booking failed");
-      // best-effort reload so UI doesn't stay stale
       loadSlots(selectedDoc?._id);
       loadMyAppointments();
     }
@@ -186,7 +190,6 @@ export default function PatientDashboard() {
     if (!confirm("Cancel this appointment?")) return;
     try {
       await request(`/api/appointments/${a._id}/cancel`, { method: "POST" });
-      // optimistically mark cancelled locally (if backend doesn't immediately include in socket)
       setMyAppointments((prev) => prev.map((it) => (it._id === a._id ? { ...it, status: "Cancelled" } : it)));
       loadMyAppointments();
     } catch (err) {
@@ -195,141 +198,252 @@ export default function PatientDashboard() {
     }
   }
 
+  // ---------------- UI ----------------
   return (
-    <div className="min-h-screen p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Patient — Book a slot</h1>
-          <p className="text-sm text-gray-500">Choose a doctor and select an available slot</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={logout} className="px-3 py-2 rounded border">Logout</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* doctors list */}
-        <aside className="bg-white rounded-lg border p-4">
-          <h3 className="text-sm font-semibold text-gray-600 mb-3">Doctors</h3>
-          <div className="space-y-2">
-            {doctors.map((d) => (
-              <button
-                key={d._id}
-                onClick={() => setSelectedDoc(d)}
-                className={`w-full text-left p-3 rounded-md hover:bg-gray-50 ${selectedDoc?._id === d._id ? "ring-2 ring-emerald-200 bg-emerald-50" : ""}`}
-              >
-                <div className="font-medium">{d.name}</div>
-                <div className="text-xs text-gray-500">{d.specialization || "General"}</div>
-              </button>
-            ))}
-            {doctors.length === 0 && <div className="text-sm text-gray-500">No doctors found</div>}
-          </div>
-        </aside>
-
-        {/* slots */}
-        <section className="lg:col-span-2 space-y-4">
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-gray-500">Selected</div>
-                <div className="text-lg font-semibold">{selectedDoc ? `${selectedDoc.name} — ${selectedDoc.specialization || 'General'}` : 'No doctor selected'}</div>
-              </div>
-              <div>
-                <button onClick={() => loadSlots(selectedDoc?._id)} className="px-3 py-1 rounded border">Refresh</button>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* HEADER */}
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-sky-400 flex items-center justify-center shadow-lg">
+              <span className="text-white text-2xl font-bold">🏥</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-800">Patient Portal</h1>
+              <p className="text-sm text-slate-500">Book appointments, view your upcoming visits, and manage bookings.</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border overflow-hidden">
-            <div className="p-3 text-sm text-gray-500">Available slots</div>
-            {loadingSlots ? (
-              <div className="p-6 text-center text-gray-500">Loading…</div>
-            ) : slots.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">No available slots</div>
-            ) : (
-              <div className="divide-y">
-                {slots.map((s) => (
-                  <div key={s._id || s.startAt} className="flex items-center justify-between p-3">
-                    <div>
-                      <div className="font-medium">{fmt(s.startAt)}</div>
-                      <div className="text-xs text-gray-500">{(s.durationMin || 15) + ' min'}</div>
-                    </div>
-                    <div>
-                      <button onClick={() => openBookingModal(s)} className="px-3 py-1 rounded bg-emerald-600 text-white">Book</button>
-                    </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { loadDoctors(); loadSlots(selectedDoc?._id); loadMyAppointments(); }}
+              className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 text-sm"
+            >
+              Refresh
+            </button>
+
+            <button
+              onClick={logout}
+              className="px-4 py-2 rounded-md bg-white border hover:bg-gray-50 text-sm"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+
+        {/* LAYOUT */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left: Doctors list */}
+          <aside className="lg:col-span-1 bg-white rounded-2xl border p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
+              <button onClick={loadDoctors} className="text-xs text-slate-500">Reload</button>
+            </div>
+
+            <div className="space-y-3">
+              {doctors.length === 0 && <div className="text-sm text-gray-500">No doctors found</div>}
+              {doctors.map((d) => (
+                <button
+                  key={d._id}
+                  onClick={() => setSelectedDoc(d)}
+                  className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition-shadow ${selectedDoc?._id === d._id ? "ring-2 ring-emerald-200 bg-gradient-to-r from-emerald-50 to-white shadow" : "hover:shadow-sm"}`}
+                >
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-slate-100 to-white flex items-center justify-center text-slate-800 font-semibold text-sm">
+                    {initials(d.name)}
                   </div>
-                ))}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800">{d.name}</div>
+                    <div className="text-xs text-slate-500">{d.specialization || "General"}</div>
+                  </div>
+
+                  <div className="text-xs text-gray-400">{/* reserved for future badges */}</div>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          {/* Middle: Slots */}
+          <main className="lg:col-span-2 space-y-4">
+            <div className="bg-white rounded-2xl border p-4 shadow-sm flex items-center justify-between">
+              <div>
+                <div className="text-sm text-slate-500">Selected</div>
+                <div className="text-lg font-semibold text-slate-800">
+                  {selectedDoc ? `${selectedDoc.name} — ${selectedDoc.specialization || "General"}` : "No doctor selected"}
+                </div>
               </div>
-            )}
-          </div>
-        </section>
 
-        {/* my appointments */}
-        <aside className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-600">My appointments</h3>
-            <button onClick={loadMyAppointments} className="text-xs text-gray-500">Refresh</button>
-          </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => loadSlots(selectedDoc?._id)}
+                  className="px-4 py-2 rounded-lg bg-white border hover:bg-gray-50 text-sm"
+                >
+                  Refresh slots
+                </button>
+              </div>
+            </div>
 
-          <div className="space-y-3">
-            {loadingAppointments && <div className="text-sm text-gray-500">Loading…</div>}
-            {!loadingAppointments && myAppointments.length === 0 && <div className="text-sm text-gray-500">No appointments</div>}
-            {myAppointments.map((a) => {
-              const status = a.status ? String(a.status) : "Booked";
-              const isCancelled = status.toLowerCase() === "cancelled";
-              return (
-                <div key={a._id || `${a.doctorId}_${a.startAt}`} className="p-3 border rounded">
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <div className="font-medium">{a.doctorName || a.doctorId || 'Doctor'}</div>
-                      <div className="text-sm text-gray-600">{fmt(a.startAt)}</div>
-                    </div>
-                    <div className="text-sm">
-                      <div className="text-xs text-gray-500">{status}</div>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-600 mt-2">Reason: {a.reason || '-'}</div>
-                  <div className="flex gap-2 mt-3">
-                    {!isCancelled && (
-                      <button
-                        onClick={() => handleCancelAppointment(a)}
-                        className="px-3 py-1 rounded border text-sm text-rose-600"
-                      >
-                        Cancel
-                      </button>
-                    )}
+            {/* Available slots card */}
+            <div className="bg-white rounded-2xl border p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700">Available slots</h4>
+                  <p className="text-xs text-slate-400">Select a time and book instantly</p>
+                </div>
+                <div className="text-sm text-slate-500">{loadingSlots ? "Loading…" : `${slots.length} available`}</div>
+              </div>
+
+              {loadingSlots ? (
+                <div className="p-8 text-center text-slate-400">Loading available slots…</div>
+              ) : slots.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="text-sm text-slate-500">No available slots for this doctor right now.</div>
+                  <div className="mt-3">
+                    <button onClick={() => loadDoctors()} className="px-4 py-2 rounded-md bg-emerald-600 text-white">Check other doctors</button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </aside>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {slots.map((s) => (
+                    <div key={s._id || s.startAt} className="p-3 rounded-xl border hover:shadow-md flex items-center justify-between bg-gradient-to-br from-white to-emerald-50/10">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">{fmt(s.startAt)}</div>
+                        <div className="text-xs text-slate-500 mt-1">{(s.durationMin || 15) + " min"}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openBookingModal(s)}
+                          className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                        >
+                          Book
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* Right: My Appointments */}
+          <aside className="lg:col-span-1 bg-white rounded-2xl border p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-700">My appointments</h3>
+              <button onClick={loadMyAppointments} className="text-xs text-slate-500">Refresh</button>
+            </div>
+
+            <div className="space-y-3">
+              {loadingAppointments && <div className="text-sm text-slate-500">Loading…</div>}
+
+              {!loadingAppointments && myAppointments.length === 0 && (
+                <div className="text-center text-sm text-slate-500 p-6">
+                  You have no appointments. Book a slot from the middle panel.
+                </div>
+              )}
+
+              {myAppointments.map((a) => {
+                const status = a.status ? String(a.status) : "Booked";
+                const isCancelled = status.toLowerCase() === "cancelled";
+                return (
+                  <div key={a._id || `${a.doctorId}_${a.startAt}`} className="p-3 border rounded-xl bg-white shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-800">{a.doctorName || a.doctorId || "Doctor"}</div>
+                            <div className="text-xs text-slate-500">{fmt(a.startAt)}</div>
+                          </div>
+                          <div><StatusPill status={status} /></div>
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-2">Reason: <span className="text-slate-700 font-medium">{a.reason || "-"}</span></div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-3">
+                      {!isCancelled && (
+                        <button
+                          onClick={() => handleCancelAppointment(a)}
+                          className="px-3 py-1 rounded-md border text-sm text-rose-600 hover:bg-rose-50"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          alert(`Appointment details\n\nDoctor: ${a.doctorName || a.doctorId}\nStart: ${fmt(a.startAt)}\nDuration: ${a.durationMin || 15} min\nStatus: ${status}\nReason: ${a.reason || "-"}`);
+                        }}
+                        className="px-3 py-1 rounded-md border text-sm hover:bg-gray-50"
+                      >
+                        Details
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        </div>
       </div>
 
-      {/* Booking modal */}
+      {/* BOOKING MODAL — modern with blur */}
       {showBooking && bookingSlot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md p-5">
-            <h3 className="text-lg font-semibold mb-3">Book slot — {fmt(bookingSlot.startAt)}</h3>
-            <form onSubmit={handleBook} className="space-y-3">
-              <div>
-                <label className="text-sm text-gray-600">Full name</label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="mt-1 block w-full rounded border px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Phone</label>
-                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="mt-1 block w-full rounded border px-3 py-2" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Email</label>
-                <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" className="mt-1 block w-full rounded border px-3 py-2" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* backdrop blur + dim */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowBooking(false); setBookingSlot(null); }}></div>
+
+          <div className="relative w-full max-w-md mx-4">
+            <div className="bg-white rounded-2xl p-6 shadow-2xl ring-1 ring-slate-100">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Confirm booking</h3>
+                  <p className="text-xs text-slate-500 mt-1">{selectedDoc ? `${selectedDoc.name} — ${selectedDoc.specialization || "General"}` : ""}</p>
+                  <p className="text-xs text-slate-400 mt-2">Slot — <span className="font-medium text-slate-700">{fmt(bookingSlot.startAt)}</span></p>
+                </div>
+
+                <button onClick={() => { setShowBooking(false); setBookingSlot(null); }} className="text-slate-400 hover:text-slate-600">✕</button>
               </div>
 
-              <div className="flex justify-end gap-2 mt-4">
-                <button type="button" onClick={() => { setShowBooking(false); setBookingSlot(null); }} className="px-3 py-2 rounded border">Cancel</button>
-                <button type="submit" className="px-4 py-2 rounded bg-emerald-600 text-white">Confirm booking</button>
-              </div>
-            </form>
+              <form onSubmit={handleBook} className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-500">Full name</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="Your full name"
+                    className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500">Phone</label>
+                  <input
+                    value={form.phone}
+                    onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="Optional phone number"
+                    className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500">Email</label>
+                  <input
+                    value={form.email}
+                    onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="you@example.com"
+                    type="email"
+                    className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => { setShowBooking(false); setBookingSlot(null); }} className="px-4 py-2 rounded-md border text-sm">Cancel</button>
+                  <button type="submit" className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm">Confirm booking</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

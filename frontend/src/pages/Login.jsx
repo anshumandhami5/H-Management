@@ -150,364 +150,254 @@ export default function Login() {
     }
   }
 
-  // small UI for banner
+  // Banner component (tailwind)
   function InfoBanner({ children, type = "info" }) {
-    const bg = type === "error" ? "#fee2e2" : "#ecfdf5";
-    const color = type === "error" ? "#991b1b" : "#065f46";
-    return (
-      <div style={{ background: bg, color, padding: 12, borderRadius: 8, marginBottom: 12, fontWeight: 600 }}>
-        {children}
-      </div>
-    );
+    const base = "rounded-md px-4 py-2 text-sm font-semibold";
+    if (type === "error") {
+      return <div className={`${base} bg-red-50 text-red-700 border border-red-100`}>{children}</div>;
+    }
+    return <div className={`${base} bg-emerald-50 text-emerald-800 border border-emerald-100`}>{children}</div>;
   }
 
   return (
-    <div
-      style={{
-        maxWidth: "520px",
-        margin: "48px auto",
-        padding: "28px",
-        background: "white",
-        borderRadius: "14px",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.06)"
-      }}
-    >
-      {/* HEADER */}
-      <div style={{ textAlign: "center", marginBottom: "18px" }}>
-        <div
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: 12,
-            margin: "0 auto 12px",
-            background: "linear-gradient(135deg, #0ea5a4, #4dd0e1)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "white",
-            fontSize: 22,
-            fontWeight: "700"
-          }}
-        >
-          🏥
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+        {/* LEFT: Brand / Illustration */}
+        <div className="hidden md:flex flex-col items-start justify-center space-y-6 bg-gradient-to-br from-emerald-600 to-sky-400 text-white rounded-2xl p-8 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center text-2xl font-bold shadow">
+              <span>🏥</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold">Hospital Management</h1>
+              <p className="text-sm opacity-90">Patient bookings, reception and doctor workflows</p>
+            </div>
+          </div>
+
+          <div className="mt-4 text-sm leading-relaxed opacity-95">
+            <p className="mb-2">Fast appointments — email confirmations — real-time updates.</p>
+            <p className="text-xs opacity-90">Use your account to access the dashboard. New patients can create an account below.</p>
+          </div>
+
+          <div className="mt-auto text-sm opacity-90">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded bg-white/20 flex items-center justify-center">✓</div>
+              <div>Secure & easy</div>
+            </div>
+          </div>
         </div>
 
-        <h2 style={{ margin: 0 }}>Hospital Management System</h2>
-        <p style={{ color: "#6b7280", marginTop: 6 }}>
-          {mode === "login" ? "Sign in to your account" : "Create a new patient account"}
-        </p>
-      </div>
-
-      {/* show registration success / verification messages */}
-      {regSuccess && <InfoBanner type="info">{regSuccess}</InfoBanner>}
-      {resendMsg && <InfoBanner type={resendMsg.startsWith("Could") ? "error" : "info"}>{resendMsg}</InfoBanner>}
-      {err && <InfoBanner type="error">{err}</InfoBanner>}
-
-      {/* TOGGLE BUTTONS */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 14 }}>
-        <button
-          onClick={() => { setErr(""); setRegSuccess(""); setResendMsg(""); setMode("login"); }}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "none",
-            background: mode === "login" ? "#0ea5a4" : "#f1f5f9",
-            color: mode === "login" ? "#fff" : "#0f172a",
-            cursor: "pointer",
-            fontWeight: 700
-          }}
-        >
-          Sign in
-        </button>
-        <button
-          onClick={() => { setErr(""); setRegSuccess(""); setResendMsg(""); setMode("register"); }}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "none",
-            background: mode === "register" ? "#0ea5a4" : "#f1f5f9",
-            color: mode === "register" ? "#fff" : "#0f172a",
-            cursor: "pointer",
-            fontWeight: 700
-          }}
-        >
-          Create account
-        </button>
-      </div>
-
-      {/* LOGIN FORM */}
-      {mode === "login" && (
-        <form onSubmit={handleLoginSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* EMAIL */}
-          <input
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #e5e7eb",
-              fontSize: "15px"
-            }}
-          />
-
-          {/* PASSWORD WITH EYE */}
-          <div style={{ position: "relative" }}>
-            <input
-              placeholder="Password"
-              type={showLoginPass ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "12px",
-                paddingRight: "40px",
-                borderRadius: "10px",
-                border: "1px solid #e5e7eb",
-                fontSize: "15px"
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowLoginPass(!showLoginPass)}
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "18px"
-              }}
-            >
-              {showLoginPass ? "👁" : "👁‍🗨"}
-            </button>
+        {/* RIGHT: Card */}
+        <div className="bg-white rounded-2xl shadow-lg p-8">
+          {/* header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center text-2xl">🏥</div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Hospital Management System</h2>
+                <p className="text-sm text-slate-500">
+                  {mode === "login" ? "Sign in to your account" : "Create a new patient account"}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setErr(""); setRegSuccess(""); setResendMsg(""); setMode("login"); }}
+                className={`px-3 py-1 rounded-md text-sm font-semibold ${mode === "login" ? "bg-emerald-600 text-white" : "bg-gray-100 text-slate-700"}`}
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => { setErr(""); setRegSuccess(""); setResendMsg(""); setMode("register"); }}
+                className={`px-3 py-1 rounded-md text-sm font-semibold ${mode === "register" ? "bg-emerald-600 text-white" : "bg-gray-100 text-slate-700"}`}
+              >
+                Create account
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                flex: 1,
-                background: "#0ea5a4",
-                color: "white",
-                border: "none",
-                padding: "12px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontWeight: "600",
-                fontSize: "15px"
-              }}
-            >
-              {loading ? "Signing in..." : "Sign in"}
-            </button>
-
-            {/* Resend verification quick button (uses entered email or prefills) */}
-            <button
-              type="button"
-              onClick={() => handleResendVerification(email)}
-              disabled={resendLoading}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: "13px"
-              }}
-            >
-              {resendLoading ? "Sending..." : "Resend verification"}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* REGISTER FORM */}
-      {mode === "register" && (
-        <form onSubmit={handleRegisterSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <input
-            placeholder="Full name"
-            value={regName}
-            onChange={(e) => setRegName(e.target.value)}
-            required
-            style={{
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #e5e7eb",
-              fontSize: "15px"
-            }}
-          />
-
-          <input
-            placeholder="Email"
-            type="email"
-            value={regEmail}
-            onChange={(e) => setRegEmail(e.target.value)}
-            required
-            style={{
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #e5e7eb",
-              fontSize: "15px"
-            }}
-          />
-
-          {/* REGISTER PASSWORD */}
-          <div style={{ position: "relative" }}>
-            <input
-              placeholder="Password (min 6 chars)"
-              type={showRegPass ? "text" : "password"}
-              value={regPassword}
-              onChange={(e) => setRegPassword(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "12px",
-                paddingRight: "40px",
-                borderRadius: "10px",
-                border: "1px solid #e5e7eb",
-                fontSize: "15px"
-              }}
-            />
-
-            <button
-              type="button"
-              onClick={() => setShowRegPass(!showRegPass)}
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "18px"
-              }}
-            >
-              {showRegPass ? "👁" : "👁‍🗨"}
-            </button>
+          {/* messages */}
+          <div className="space-y-3 mb-4">
+            {regSuccess && <InfoBanner type="info">{regSuccess}</InfoBanner>}
+            {resendMsg && <InfoBanner type={resendMsg.startsWith("Could") ? "error" : "info"}>{resendMsg}</InfoBanner>}
+            {err && <InfoBanner type="error">{err}</InfoBanner>}
           </div>
 
-          {/* CONFIRM PASSWORD */}
-          <div style={{ position: "relative" }}>
-            <input
-              placeholder="Confirm password"
-              type={showRegConfirmPass ? "text" : "password"}
-              value={regConfirm}
-              onChange={(e) => setRegConfirm(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "12px",
-                paddingRight: "40px",
-                borderRadius: "10px",
-                border: "1px solid #e5e7eb",
-                fontSize: "15px"
-              }}
-            />
+          {/* forms */}
+          {mode === "login" && (
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input
+                  placeholder="you@example.com"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setShowRegConfirmPass(!showRegConfirmPass)}
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "18px"
-              }}
-            >
-              {showRegConfirmPass ? "👁" : "👁‍🗨"}
-            </button>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    placeholder="Your password"
+                    type={showLoginPass ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPass(!showLoginPass)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-lg"
+                    aria-label="toggle password visibility"
+                  >
+                    {showLoginPass ? "👁" : "👁‍🗨"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg px-4 py-2 font-semibold"
+                >
+                  {loading ? "Signing in..." : "Sign in"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleResendVerification(email)}
+                  disabled={resendLoading}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-slate-700 bg-white"
+                >
+                  {resendLoading ? "Sending..." : "Resend verification"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {mode === "register" && (
+            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full name</label>
+                <input
+                  placeholder="Your full name"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input
+                  placeholder="you@example.com"
+                  type="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    placeholder="Password (min 6 chars)"
+                    type={showRegPass ? "text" : "password"}
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPass(!showRegPass)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-lg"
+                    aria-label="toggle password visibility"
+                  >
+                    {showRegPass ? "👁" : "👁‍🗨"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirm password</label>
+                <div className="relative">
+                  <input
+                    placeholder="Confirm password"
+                    type={showRegConfirmPass ? "text" : "password"}
+                    value={regConfirm}
+                    onChange={(e) => setRegConfirm(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegConfirmPass(!showRegConfirmPass)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-lg"
+                    aria-label="toggle password visibility"
+                  >
+                    {showRegConfirmPass ? "👁" : "👁‍🗨"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg px-4 py-2 font-semibold"
+                >
+                  {loading ? "Creating account..." : "Create account"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleResendVerification(regEmail)}
+                  disabled={resendLoading}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-slate-700 bg-white"
+                >
+                  {resendLoading ? "Sending..." : "Resend verification"}
+                </button>
+              </div>
+
+              {err && <div className="text-sm font-semibold text-red-600">{err}</div>}
+              {regSuccess && <div className="text-sm font-semibold text-emerald-700">{regSuccess}</div>}
+            </form>
+          )}
+
+          <div className="mt-6 text-center text-sm text-slate-500">
+            {mode === "login" ? (
+              <span>
+                New here?{" "}
+                <button
+                  onClick={() => { setErr(""); setRegSuccess(""); setMode("register"); }}
+                  className="text-emerald-600 font-semibold"
+                >
+                  Create an account
+                </button>
+              </span>
+            ) : (
+              <span>
+                Already have an account?{" "}
+                <button
+                  onClick={() => { setErr(""); setRegSuccess(""); setMode("login"); }}
+                  className="text-emerald-600 font-semibold"
+                >
+                  Sign in
+                </button>
+              </span>
+            )}
           </div>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                flex: 1,
-                background: "#0ea5a4",
-                color: "white",
-                border: "none",
-                padding: "12px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontWeight: "600",
-                fontSize: "15px"
-              }}
-            >
-              {loading ? "Creating account..." : "Create account"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                // quick shortcut: if user created account but didn't get email, allow resend using regEmail
-                handleResendVerification(regEmail);
-              }}
-              disabled={resendLoading}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: "13px"
-              }}
-            >
-              {resendLoading ? "Sending..." : "Resend verification"}
-            </button>
-          </div>
-
-          {err && <div style={{ color: "#ef4444", fontWeight: 600 }}>{err}</div>}
-          {regSuccess && <div style={{ color: "#059669", fontWeight: 600 }}>{regSuccess}</div>}
-        </form>
-      )}
-
-      {/* FOOTER TOGGLE */}
-      <div style={{ marginTop: 16, textAlign: "center", color: "#6b7280", fontSize: 13 }}>
-        {mode === "login" ? (
-          <span>
-            New here?{" "}
-            <button
-              onClick={() => { setErr(""); setRegSuccess(""); setMode("register"); }}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#0ea5a4",
-                cursor: "pointer",
-                fontWeight: 700
-              }}
-            >
-              Create an account
-            </button>
-          </span>
-        ) : (
-          <span>
-            Already have an account?{" "}
-            <button
-              onClick={() => { setErr(""); setRegSuccess(""); setMode("login"); }}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#0ea5a4",
-                cursor: "pointer",
-                fontWeight: 700
-              }}
-            >
-              Sign in
-            </button>
-          </span>
-        )}
+        </div>
       </div>
     </div>
   );
